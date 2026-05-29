@@ -5,47 +5,74 @@ Generates a professional 8-slide PowerPoint presentation:
   "Zambia's Trade Story: K33 Billion Warning"
   Storytelling with Data principles applied.
 
+  Slides 1 & 8  : Dark navy theme (original)
+  Slides 2 – 7  : Clean white theme matching Import-Export-Daniel.pptx
+                  (white bg, dark teal headlines, orange line/accent,
+                   teal boxes for annotations, source note at bottom)
+
+Output: zambia_trade_presentation_Daniel.pptx
+
 Requirements:
     pip install python-pptx
-
 Run:
     python build_presentation.py
 """
 
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches, Pt
-import copy
+import lxml.etree as etree
+from pptx.oxml.ns import qn
 
 # ─────────────────────────────────────────────
-# COLOR PALETTE
+# DARK THEME  (slides 1 & 8)
 # ─────────────────────────────────────────────
-BG_DARK        = RGBColor(0x0d, 0x1b, 0x2a)   # Deep navy background
-BG_PANEL       = RGBColor(0x16, 0x21, 0x3e)   # Slightly lighter panel
-ACCENT_IMPORT  = RGBColor(0xe8, 0x5d, 0x04)   # Orange — imports / warning
-ACCENT_EXPORT  = RGBColor(0x1d, 0x6f, 0xa4)   # Teal-blue — exports / positive
-COLOR_DEFICIT  = RGBColor(0xc1, 0x12, 0x1f)   # Red — deficit / danger
-COLOR_WHITE    = RGBColor(0xff, 0xff, 0xff)
-COLOR_LGREY    = RGBColor(0xe0, 0xe0, 0xe0)
-COLOR_MGREY    = RGBColor(0xa0, 0xa8, 0xb8)
-COLOR_GOLD     = RGBColor(0xf4, 0xa2, 0x61)   # Warm gold for callouts
-COLOR_GREEN    = RGBColor(0x2d, 0xc6, 0x53)   # Positive surplus
+D_BG        = RGBColor(0x0d, 0x1b, 0x2a)
+D_PANEL     = RGBColor(0x16, 0x21, 0x3e)
+D_ORANGE    = RGBColor(0xe8, 0x5d, 0x04)
+D_TEAL      = RGBColor(0x1d, 0x6f, 0xa4)
+D_RED       = RGBColor(0xc1, 0x12, 0x1f)
+D_WHITE     = RGBColor(0xff, 0xff, 0xff)
+D_LGREY     = RGBColor(0xe0, 0xe0, 0xe0)
+D_MGREY     = RGBColor(0xa0, 0xa8, 0xb8)
+D_GOLD      = RGBColor(0xf4, 0xa2, 0x61)
+D_GREEN     = RGBColor(0x2d, 0xc6, 0x53)
+
+# ─────────────────────────────────────────────
+# LIGHT THEME  (slides 2–7)  — matches screenshot
+# ─────────────────────────────────────────────
+L_BG        = RGBColor(0xff, 0xff, 0xff)   # white background
+L_HEADLINE  = RGBColor(0x1a, 0x1a, 0x2e)   # very dark navy for headline text
+L_ORANGE    = RGBColor(0xe8, 0x5d, 0x04)   # orange — imports / line / warnings
+L_TEAL      = RGBColor(0x1d, 0x6f, 0xa4)   # teal — exports / annotation boxes
+L_TEAL_LT   = RGBColor(0xe8, 0xf4, 0xfd)   # very light teal box fill
+L_ORANGE_LT = RGBColor(0xff, 0xf3, 0xe8)   # very light orange box fill
+L_RED       = RGBColor(0xc1, 0x12, 0x1f)
+L_GREEN     = RGBColor(0x2d, 0xc6, 0x53)
+L_BLACK     = RGBColor(0x1a, 0x1a, 0x2e)
+L_DGREY     = RGBColor(0x44, 0x44, 0x55)
+L_MGREY     = RGBColor(0x88, 0x88, 0x99)
+L_LGREY     = RGBColor(0xcc, 0xcc, 0xdd)
+L_PANEL     = RGBColor(0xf5, 0xf7, 0xfa)   # very light grey panel
 
 SLIDE_W = Inches(13.33)
 SLIDE_H = Inches(7.5)
 
-# ─────────────────────────────────────────────
-# HELPER UTILITIES
-# ─────────────────────────────────────────────
+YEARS   = [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022]
+EXPORTS = [5.44, 4.73, 5.91, 6.23, 5.33, 5.59, 6.59, 9.70, 14.17, 12.95]
+IMPORTS = [4.21, 4.62, 7.03, 7.29, 9.43, 9.24, 10.40, 15.46, 20.13, 22.22]
+FX      = [5.4,  6.0,  8.6,  10.3, 9.9,  10.4, 12.9, 18.3, 20.0,  17.2]
+BALANCE = [e - i for e, i in zip(EXPORTS, IMPORTS)]
 
-def add_rect(slide, left, top, width, height, fill_color, line_color=None, line_width=None):
-    """Add a filled rectangle shape."""
-    shape = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        left, top, width, height
-    )
+
+# ═══════════════════════════════════════════
+# SHARED HELPERS
+# ═══════════════════════════════════════════
+
+def add_rect(slide, left, top, width, height, fill_color,
+             line_color=None, line_width=None):
+    shape = slide.shapes.add_shape(1, left, top, width, height)
     shape.fill.solid()
     shape.fill.fore_color.rgb = fill_color
     if line_color:
@@ -57,16 +84,22 @@ def add_rect(slide, left, top, width, height, fill_color, line_color=None, line_
     return shape
 
 
+def add_rect_outline(slide, left, top, width, height, fill_color,
+                     line_color, line_width=Pt(1.5)):
+    shape = slide.shapes.add_shape(1, left, top, width, height)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill_color
+    shape.line.color.rgb = line_color
+    shape.line.width = line_width
+    return shape
+
+
 def add_text_box(slide, text, left, top, width, height,
-                 font_name="Calibri", font_size=18, bold=False, italic=False,
-                 color=COLOR_WHITE, align=PP_ALIGN.LEFT, word_wrap=True,
-                 v_anchor=None):
-    """Add a text box with given formatting."""
+                 font_name="Calibri", font_size=14, bold=False, italic=False,
+                 color=D_WHITE, align=PP_ALIGN.LEFT, word_wrap=True):
     txBox = slide.shapes.add_textbox(left, top, width, height)
     tf = txBox.text_frame
     tf.word_wrap = word_wrap
-    if v_anchor:
-        tf.vertical_anchor = v_anchor
     p = tf.paragraphs[0]
     p.alignment = align
     run = p.add_run()
@@ -79,916 +112,818 @@ def add_text_box(slide, text, left, top, width, height,
     return txBox
 
 
-def add_multiline_text(slide, lines, left, top, width, height,
-                       font_name="Calibri", font_size=16, bold=False,
-                       color=COLOR_LGREY, align=PP_ALIGN.LEFT, spacing=1.15):
-    """Add a text box with multiple lines (list of strings)."""
+def add_multiline(slide, lines, left, top, width, height,
+                  font_name="Calibri", font_size=13, bold=False,
+                  color=L_DGREY, align=PP_ALIGN.LEFT, line_spacing=115):
     txBox = slide.shapes.add_textbox(left, top, width, height)
     tf = txBox.text_frame
     tf.word_wrap = True
-    from pptx.util import Pt as _Pt
-    from pptx.oxml.ns import qn
-    import lxml.etree as etree
-
     first = True
     for line in lines:
         if first:
-            p = tf.paragraphs[0]
-            first = False
+            p = tf.paragraphs[0]; first = False
         else:
             p = tf.add_paragraph()
         p.alignment = align
         run = p.add_run()
         run.text = line
         run.font.name = font_name
-        run.font.size = _Pt(font_size)
+        run.font.size = Pt(font_size)
         run.font.bold = bold
         run.font.color.rgb = color
-        # line spacing
-        from pptx.oxml.ns import qn as _qn
-        pPr = p._pPr
-        if pPr is None:
-            pPr = p._p.get_or_add_pPr()
-        lnSpc = etree.SubElement(pPr, _qn('a:lnSpc'))
-        spcPct = etree.SubElement(lnSpc, _qn('a:spcPct'))
-        spcPct.set('val', str(int(spacing * 100000)))
+        pPr = p._p.get_or_add_pPr()
+        lnSpc = etree.SubElement(pPr, qn('a:lnSpc'))
+        spcPct = etree.SubElement(lnSpc, qn('a:spcPct'))
+        spcPct.set('val', str(line_spacing * 1000))
     return txBox
 
 
-def set_slide_background(slide, color):
-    """Fill slide background with a solid color."""
-    background = slide.background
-    fill = background.fill
+def set_bg(slide, color):
+    bg = slide.background
+    fill = bg.fill
     fill.solid()
     fill.fore_color.rgb = color
 
 
-def add_action_headline(slide, text, top_offset=Inches(0.25)):
-    """Add the prominent action headline at the top of a content slide."""
-    add_rect(slide,
-             Inches(0), top_offset,
-             Inches(13.33), Inches(1.0),
-             BG_PANEL)
+def light_footer(slide, source="Source: Bank of Zambia / IMF annual ZMW/USD averages  |  FSIO Cohort Analysis"):
+    add_rect(slide, Inches(0), Inches(7.22), Inches(13.33), Inches(0.28), L_PANEL)
+    add_text_box(slide, source,
+                 Inches(0.35), Inches(7.24), Inches(12.0), Inches(0.24),
+                 font_size=7.5, color=L_MGREY, align=PP_ALIGN.LEFT)
+
+
+def slide_num(slide, n, total=8):
+    add_text_box(slide, f"{n} / {total}",
+                 Inches(12.5), Inches(7.24), Inches(0.8), Inches(0.24),
+                 font_size=7.5, color=L_MGREY, align=PP_ALIGN.RIGHT)
+
+
+def light_headline(slide, text):
+    """Action headline bar — matches screenshot: dark navy text, left-aligned."""
     add_text_box(slide, text,
-                 Inches(0.4), top_offset + Inches(0.08),
-                 Inches(12.5), Inches(0.85),
-                 font_size=26, bold=True,
-                 color=COLOR_WHITE,
-                 align=PP_ALIGN.LEFT)
+                 Inches(0.38), Inches(0.22), Inches(12.7), Inches(0.78),
+                 font_name="Calibri", font_size=28, bold=True,
+                 color=L_HEADLINE, align=PP_ALIGN.LEFT)
+    add_rect(slide, Inches(0.38), Inches(0.98), Inches(12.6), Inches(0.03), L_ORANGE)
 
 
-def add_slide_number(slide, number, total=8):
-    add_text_box(slide, f"{number} / {total}",
-                 Inches(12.0), Inches(7.1),
-                 Inches(1.2), Inches(0.3),
-                 font_size=9, color=COLOR_MGREY,
-                 align=PP_ALIGN.RIGHT)
+def annotation_box(slide, left, top, width, height,
+                   year_label, rate_text, body_text,
+                   border_color=L_TEAL, bg_color=L_TEAL_LT):
+    """Teal-outlined annotation card — matches screenshot style."""
+    add_rect_outline(slide, left, top, width, height, bg_color, border_color, Pt(1.5))
+    # year + arrow + rate on first line
+    header = f"{year_label}  →  {rate_text}"
+    add_text_box(slide, header,
+                 left + Inches(0.12), top + Inches(0.1),
+                 width - Inches(0.18), Inches(0.35),
+                 font_size=13, bold=True, color=border_color)
+    add_text_box(slide, body_text,
+                 left + Inches(0.12), top + Inches(0.46),
+                 width - Inches(0.18), height - Inches(0.52),
+                 font_size=11, color=L_DGREY, word_wrap=True)
 
 
-def add_footer(slide, text="Data: Zambia Agriculture Import-Export Dashboard 2013–2022  |  FSIO Cohort Analysis"):
-    add_text_box(slide, text,
-                 Inches(0.3), Inches(7.15),
-                 Inches(11.5), Inches(0.28),
-                 font_size=8, color=COLOR_MGREY,
-                 align=PP_ALIGN.LEFT)
+def draw_line_chart(slide, data_series, left, top, width, height,
+                    max_val, min_val=0, year_labels=True,
+                    gridline_vals=None, show_points=True):
+    """
+    Draw a simple polyline chart using rectangles and text.
+    data_series: list of (label, values_list, color, line_width_pt)
+    Returns nothing — draws directly on slide.
+    """
+    # Chart area
+    add_rect(slide, left, top, width, height, L_BG)
+    # Border bottom + left
+    add_rect(slide, left, top + height - Inches(0.015),
+             width, Inches(0.015), L_LGREY)
+    add_rect(slide, left, top, Inches(0.015), height, L_LGREY)
 
-
-# ─────────────────────────────────────────────
-# DATA
-# ─────────────────────────────────────────────
-YEARS = [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022]
-EXPORTS = [5.44, 4.73, 5.91, 6.23, 5.33, 5.59, 6.59, 9.70, 14.17, 12.95]
-IMPORTS = [4.21, 4.62, 7.03, 7.29, 9.43, 9.24, 10.40, 15.46, 20.13, 22.22]
-BALANCE = [e - i for e, i in zip(EXPORTS, IMPORTS)]
-
-
-# ─────────────────────────────────────────────
-# SLIDE 1: TITLE SLIDE
-# ─────────────────────────────────────────────
-def build_slide_01(prs):
-    slide_layout = prs.slide_layouts[6]  # blank
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-
-    # Left accent bar
-    add_rect(slide, Inches(0), Inches(0), Inches(0.12), Inches(7.5), ACCENT_IMPORT)
-
-    # Top decorative band
-    add_rect(slide, Inches(0.12), Inches(0), Inches(13.21), Inches(0.06), ACCENT_EXPORT)
-
-    # Subtitle label pill
-    add_rect(slide, Inches(0.5), Inches(1.1), Inches(3.4), Inches(0.38), ACCENT_EXPORT)
-    add_text_box(slide, "AGRICULTURE TRADE ANALYSIS  2013 – 2022",
-                 Inches(0.55), Inches(1.12), Inches(3.3), Inches(0.34),
-                 font_size=8.5, bold=True, color=COLOR_WHITE, align=PP_ALIGN.LEFT)
-
-    # Main title
-    add_text_box(slide, "Zambia's Trade Story:",
-                 Inches(0.5), Inches(1.65), Inches(11.0), Inches(1.0),
-                 font_size=52, bold=True, color=COLOR_WHITE, align=PP_ALIGN.LEFT)
-    add_text_box(slide, "K33 Billion Warning",
-                 Inches(0.5), Inches(2.55), Inches(11.0), Inches(1.1),
-                 font_size=60, bold=True, color=ACCENT_IMPORT, align=PP_ALIGN.LEFT)
-
-    # Subtitle
-    add_text_box(slide,
-                 "How Currency Volatility is Amplifying the Agriculture\nImport-Export Deficit (2013–2022)",
-                 Inches(0.5), Inches(3.75), Inches(10.0), Inches(1.0),
-                 font_size=19, bold=False, color=COLOR_LGREY, align=PP_ALIGN.LEFT)
-
-    # Divider line
-    add_rect(slide, Inches(0.5), Inches(4.85), Inches(5.0), Inches(0.04), COLOR_MGREY)
-
-    # Presenter & date
-    add_text_box(slide, "FSIO Cohort  |  May 2026",
-                 Inches(0.5), Inches(4.97), Inches(8.0), Inches(0.4),
-                 font_size=13, color=COLOR_MGREY, align=PP_ALIGN.LEFT)
-
-    # Right side — big stat block
-    add_rect(slide, Inches(9.0), Inches(1.8), Inches(3.8), Inches(4.5), BG_PANEL)
-    add_text_box(slide, "CUMULATIVE DEFICIT",
-                 Inches(9.15), Inches(1.98), Inches(3.5), Inches(0.35),
-                 font_size=9, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-    add_text_box(slide, "-K33.4bn",
-                 Inches(9.0), Inches(2.3), Inches(3.8), Inches(1.1),
-                 font_size=54, bold=True, color=COLOR_DEFICIT, align=PP_ALIGN.CENTER)
-
-    add_rect(slide, Inches(9.3), Inches(3.55), Inches(3.2), Inches(0.03), ACCENT_EXPORT)
-
-    add_text_box(slide, "TOTAL IMPORTS",
-                 Inches(9.15), Inches(3.7), Inches(3.5), Inches(0.3),
-                 font_size=8.5, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-    add_text_box(slide, "K110.04bn",
-                 Inches(9.0), Inches(3.95), Inches(3.8), Inches(0.65),
-                 font_size=30, bold=True, color=ACCENT_IMPORT, align=PP_ALIGN.CENTER)
-
-    add_text_box(slide, "TOTAL EXPORTS",
-                 Inches(9.15), Inches(4.7), Inches(3.5), Inches(0.3),
-                 font_size=8.5, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-    add_text_box(slide, "K76.65bn",
-                 Inches(9.0), Inches(4.95), Inches(3.8), Inches(0.65),
-                 font_size=30, bold=True, color=ACCENT_EXPORT, align=PP_ALIGN.CENTER)
-
-    # Bottom note
-    add_text_box(slide,
-                 "A Storytelling with Data Analysis",
-                 Inches(0.5), Inches(6.85), Inches(8.0), Inches(0.4),
-                 font_size=9, italic=True, color=COLOR_MGREY)
-
-    return slide
-
-
-# ─────────────────────────────────────────────
-# SLIDE 2: THE SITUATION
-# ─────────────────────────────────────────────
-def build_slide_02(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), ACCENT_EXPORT)
-
-    add_action_headline(slide,
-        "Zambia Flipped from Surplus to Structural Deficit in Under a Decade")
-
-    # Left narrative
-    add_text_box(slide, "THE SITUATION",
-                 Inches(0.3), Inches(1.45), Inches(3.0), Inches(0.3),
-                 font_size=8.5, bold=True, color=ACCENT_EXPORT)
-
-    body_lines = [
-        "In 2013, Zambia exported MORE than it imported.",
-        "",
-        "By 2022, the annual trade deficit reached K9.3 billion —",
-        "part of a cumulative K33.4 billion shortfall over the decade.",
-        "",
-        "This is not a temporary shock. It is a structural shift",
-        "driven by currency depreciation, import dependency,",
-        "and low-value commodity exports.",
-    ]
-    add_multiline_text(slide, body_lines,
-                       Inches(0.3), Inches(1.8), Inches(5.8), Inches(3.5),
-                       font_size=15.5, color=COLOR_LGREY)
-
-    # Callout box: 2013 surplus
-    add_rect(slide, Inches(0.3), Inches(5.35), Inches(2.65), Inches(1.5), BG_PANEL)
-    add_text_box(slide, "2013",
-                 Inches(0.35), Inches(5.42), Inches(2.5), Inches(0.35),
-                 font_size=10, bold=True, color=COLOR_MGREY)
-    add_text_box(slide, "+K1.23bn",
-                 Inches(0.35), Inches(5.72), Inches(2.5), Inches(0.6),
-                 font_size=28, bold=True, color=COLOR_GREEN)
-    add_text_box(slide, "TRADE SURPLUS",
-                 Inches(0.35), Inches(6.28), Inches(2.5), Inches(0.28),
-                 font_size=8.5, bold=True, color=COLOR_MGREY)
-
-    # Callout box: 2022 deficit
-    add_rect(slide, Inches(3.1), Inches(5.35), Inches(2.65), Inches(1.5), BG_PANEL)
-    add_text_box(slide, "2022",
-                 Inches(3.15), Inches(5.42), Inches(2.5), Inches(0.35),
-                 font_size=10, bold=True, color=COLOR_MGREY)
-    add_text_box(slide, "-K9.27bn",
-                 Inches(3.15), Inches(5.72), Inches(2.5), Inches(0.6),
-                 font_size=28, bold=True, color=COLOR_DEFICIT)
-    add_text_box(slide, "TRADE DEFICIT",
-                 Inches(3.15), Inches(6.28), Inches(2.5), Inches(0.28),
-                 font_size=8.5, bold=True, color=COLOR_MGREY)
-
-    # Arrow between boxes
-    add_text_box(slide, "→",
-                 Inches(2.78), Inches(5.85), Inches(0.4), Inches(0.5),
-                 font_size=26, bold=True, color=COLOR_DEFICIT)
-
-    # Right panel — big numbers
-    add_rect(slide, Inches(6.5), Inches(1.4), Inches(6.5), Inches(5.7), BG_PANEL)
-    add_text_box(slide, "10-YEAR SCORECARD",
-                 Inches(6.7), Inches(1.55), Inches(6.0), Inches(0.32),
-                 font_size=9.5, bold=True, color=COLOR_MGREY)
-
-    # Imports block
-    add_rect(slide, Inches(6.7), Inches(1.95), Inches(5.9), Inches(1.4), ACCENT_IMPORT)
-    add_text_box(slide, "TOTAL IMPORTS",
-                 Inches(6.85), Inches(2.0), Inches(5.5), Inches(0.32),
-                 font_size=9, bold=True, color=COLOR_WHITE)
-    add_text_box(slide, "K110.04 billion",
-                 Inches(6.85), Inches(2.28), Inches(5.5), Inches(0.85),
-                 font_size=38, bold=True, color=COLOR_WHITE)
-
-    # Exports block
-    add_rect(slide, Inches(6.7), Inches(3.45), Inches(5.9), Inches(1.4), ACCENT_EXPORT)
-    add_text_box(slide, "TOTAL EXPORTS",
-                 Inches(6.85), Inches(3.5), Inches(5.5), Inches(0.32),
-                 font_size=9, bold=True, color=COLOR_WHITE)
-    add_text_box(slide, "K76.65 billion",
-                 Inches(6.85), Inches(3.78), Inches(5.5), Inches(0.85),
-                 font_size=38, bold=True, color=COLOR_WHITE)
-
-    # Deficit
-    add_rect(slide, Inches(6.7), Inches(4.95), Inches(5.9), Inches(1.0), COLOR_DEFICIT)
-    add_text_box(slide, "CUMULATIVE DEFICIT",
-                 Inches(6.85), Inches(4.98), Inches(5.5), Inches(0.28),
-                 font_size=9, bold=True, color=COLOR_WHITE)
-    add_text_box(slide, "-K33.39 billion",
-                 Inches(6.85), Inches(5.22), Inches(5.5), Inches(0.65),
-                 font_size=34, bold=True, color=COLOR_WHITE)
-
-    add_footer(slide)
-    add_slide_number(slide, 2)
-    return slide
-
-
-# ─────────────────────────────────────────────
-# SLIDE 3: DIVERGING TRENDS
-# ─────────────────────────────────────────────
-def build_slide_03(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), ACCENT_IMPORT)
-
-    add_action_headline(slide,
-        "Imports Grew 428%. Exports Grew 138%. The Gap Tells the Story.")
-
-    # Chart area background
-    chart_left = Inches(0.4)
-    chart_top  = Inches(1.42)
-    chart_w    = Inches(12.5)
-    chart_h    = Inches(5.3)
-    add_rect(slide, chart_left, chart_top, chart_w, chart_h, BG_PANEL)
-
-    # Y-axis label
-    add_text_box(slide, "ZMW (billions)",
-                 Inches(0.42), Inches(1.5), Inches(1.2), Inches(0.28),
-                 font_size=8, color=COLOR_MGREY)
-
-    # Horizontal gridlines
-    max_val = 24.0
-    for grid_val in [5, 10, 15, 20]:
-        y_frac = 1.0 - grid_val / max_val
-        gy = chart_top + Inches(0.45) + y_frac * Inches(4.55)
-        add_rect(slide, chart_left + Inches(0.6), gy,
-                 chart_w - Inches(0.75), Inches(0.01),
-                 RGBColor(0x2a, 0x3a, 0x52))
-        add_text_box(slide, f"{grid_val}",
-                     chart_left + Inches(0.05), gy - Inches(0.12),
-                     Inches(0.5), Inches(0.28),
-                     font_size=7.5, color=COLOR_MGREY, align=PP_ALIGN.RIGHT)
-
-    # Bar parameters
-    bar_area_left  = chart_left + Inches(0.65)
-    bar_area_w     = chart_w - Inches(0.8)
-    bar_area_top   = chart_top + Inches(0.45)
-    bar_area_h     = Inches(4.55)
+    plot_l = left + Inches(0.55)
+    plot_t = top + Inches(0.18)
+    plot_w = width - Inches(0.7)
+    plot_h = height - Inches(0.55)
+    val_range = max_val - min_val
     n = len(YEARS)
-    slot_w = bar_area_w / n
-    bar_w  = slot_w * 0.38
-    gap    = slot_w * 0.04
 
-    for i, year in enumerate(YEARS):
-        imp = IMPORTS[i]
-        exp = EXPORTS[i]
-        x_center = bar_area_left + (i + 0.5) * slot_w
+    # Gridlines
+    if gridline_vals:
+        for gv in gridline_vals:
+            gy = plot_t + plot_h * (1 - (gv - min_val) / val_range)
+            add_rect(slide, plot_l, gy, plot_w, Inches(0.008),
+                     RGBColor(0xe8, 0xe8, 0xee))
+            add_text_box(slide, str(gv),
+                         left, gy - Inches(0.13),
+                         Inches(0.52), Inches(0.28),
+                         font_size=8, color=L_MGREY, align=PP_ALIGN.RIGHT)
 
-        # Import bar
-        ih = (imp / max_val) * bar_area_h
-        iy = bar_area_top + bar_area_h - ih
-        add_rect(slide, x_center - bar_w - gap, iy, bar_w, ih, ACCENT_IMPORT)
+    # X-axis labels
+    if year_labels:
+        for i, yr in enumerate(YEARS):
+            xp = plot_l + (i / (n - 1)) * plot_w
+            add_text_box(slide, str(yr),
+                         xp - Inches(0.28), plot_t + plot_h + Inches(0.05),
+                         Inches(0.56), Inches(0.22),
+                         font_size=8, color=L_MGREY, align=PP_ALIGN.CENTER)
 
-        # Export bar
-        eh = (exp / max_val) * bar_area_h
-        ey = bar_area_top + bar_area_h - eh
-        add_rect(slide, x_center + gap, ey, bar_w, eh, ACCENT_EXPORT)
+    # Series
+    for (label, values, color, lw) in data_series:
+        pts = []
+        for i, v in enumerate(values):
+            xp = plot_l + (i / (n - 1)) * plot_w
+            yp = plot_t + plot_h * (1 - (v - min_val) / val_range)
+            pts.append((xp, yp))
+        # Draw segments as thin rectangles
+        seg_h = Pt(lw).inches
+        for i in range(len(pts) - 1):
+            x1, y1 = pts[i]
+            x2, y2 = pts[i + 1]
+            import math
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.sqrt(dx * dx + dy * dy)
+            angle_rad = math.atan2(dy, dx)
+            # Approximate with very thin rect along segment mid-point
+            mx = (x1 + x2) / 2
+            my = (y1 + y2) / 2 - Inches(seg_h / 2)
+            seg_rect = slide.shapes.add_shape(1,
+                int(x1), int(min(y1, y2) - Inches(seg_h / 2)),
+                int(abs(dx)) if abs(dx) > Inches(0.01) else Inches(0.02),
+                Inches(seg_h) + int(abs(dy)))
+            seg_rect.fill.solid()
+            seg_rect.fill.fore_color.rgb = color
+            seg_rect.line.fill.background()
 
-        # Year label
-        add_text_box(slide, str(year),
-                     x_center - Inches(0.32), bar_area_top + bar_area_h + Inches(0.04),
-                     Inches(0.64), Inches(0.24),
-                     font_size=7.5, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-
-    # Annotations
-    # 2013 surplus arrow
-    add_text_box(slide, "2013: Surplus\n(Exports > Imports)",
-                 Inches(0.6), Inches(2.1), Inches(1.7), Inches(0.6),
-                 font_size=8, color=COLOR_GREEN)
-
-    # 2017 deficit starts
-    add_text_box(slide, "2015–17:\nDeficit\nbegan",
-                 Inches(3.55), Inches(1.75), Inches(1.3), Inches(0.7),
-                 font_size=8, color=ACCENT_IMPORT)
-
-    # 2020 acceleration
-    add_text_box(slide, "2020–21:\nCOVID-era\nacceleration",
-                 Inches(8.8), Inches(1.6), Inches(1.7), Inches(0.68),
-                 font_size=8, color=ACCENT_IMPORT)
-
-    # Legend
-    add_rect(slide, Inches(9.8), Inches(6.88), Inches(0.22), Inches(0.22), ACCENT_IMPORT)
-    add_text_box(slide, "Imports",
-                 Inches(10.06), Inches(6.87), Inches(1.0), Inches(0.25),
-                 font_size=9, color=COLOR_LGREY)
-    add_rect(slide, Inches(11.2), Inches(6.88), Inches(0.22), Inches(0.22), ACCENT_EXPORT)
-    add_text_box(slide, "Exports",
-                 Inches(11.46), Inches(6.87), Inches(1.0), Inches(0.25),
-                 font_size=9, color=COLOR_LGREY)
-
-    # CAGR callout
-    add_text_box(slide, "Import CAGR ~18%  vs  Export CAGR ~10%",
-                 Inches(0.45), Inches(6.9), Inches(7.5), Inches(0.28),
-                 font_size=9.5, bold=True, color=COLOR_GOLD)
-
-    add_footer(slide)
-    add_slide_number(slide, 3)
-    return slide
+        # Dots
+        if show_points:
+            for xp, yp in pts:
+                dot_r = Inches(0.065)
+                add_rect_outline(slide,
+                                 xp - dot_r, yp - dot_r, dot_r * 2, dot_r * 2,
+                                 L_BG, color, Pt(2))
+        # Label last point
+        lx, ly = pts[-1]
+        add_text_box(slide, label,
+                     lx + Inches(0.1), ly - Inches(0.18),
+                     Inches(1.0), Inches(0.3),
+                     font_size=9, bold=True, color=color)
 
 
-# ─────────────────────────────────────────────
-# SLIDE 4: CURRENCY TWIST
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════
+# SLIDE 1 — TITLE (DARK)
+# ═══════════════════════════════════════════
+def build_slide_01(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, D_BG)
+
+    add_rect(sl, Inches(0), Inches(0), Inches(0.12), Inches(7.5), D_ORANGE)
+    add_rect(sl, Inches(0.12), Inches(0), Inches(13.21), Inches(0.06), D_TEAL)
+
+    add_rect(sl, Inches(0.5), Inches(1.1), Inches(3.4), Inches(0.38), D_TEAL)
+    add_text_box(sl, "AGRICULTURE TRADE ANALYSIS  2013 – 2022",
+                 Inches(0.56), Inches(1.13), Inches(3.28), Inches(0.32),
+                 font_size=8.5, bold=True, color=D_WHITE)
+
+    add_text_box(sl, "Zambia's Trade Story:",
+                 Inches(0.5), Inches(1.65), Inches(11.0), Inches(1.0),
+                 font_size=52, bold=True, color=D_WHITE)
+    add_text_box(sl, "K33 Billion Warning",
+                 Inches(0.5), Inches(2.55), Inches(11.0), Inches(1.1),
+                 font_size=60, bold=True, color=D_ORANGE)
+    add_text_box(sl,
+                 "How Currency Volatility is Amplifying the Agriculture\nImport-Export Deficit (2013–2022)",
+                 Inches(0.5), Inches(3.78), Inches(10.0), Inches(0.95),
+                 font_size=19, color=D_LGREY)
+    add_rect(sl, Inches(0.5), Inches(4.85), Inches(5.0), Inches(0.04), D_MGREY)
+    add_text_box(sl, "FSIO Cohort  |  May 2026",
+                 Inches(0.5), Inches(4.97), Inches(8.0), Inches(0.4),
+                 font_size=13, color=D_MGREY)
+
+    # Right stat block
+    add_rect(sl, Inches(9.0), Inches(1.8), Inches(3.8), Inches(4.5), D_PANEL)
+    add_text_box(sl, "CUMULATIVE DEFICIT",
+                 Inches(9.15), Inches(1.98), Inches(3.5), Inches(0.32),
+                 font_size=9, bold=True, color=D_MGREY, align=PP_ALIGN.CENTER)
+    add_text_box(sl, "-K33.4bn",
+                 Inches(9.0), Inches(2.28), Inches(3.8), Inches(1.05),
+                 font_size=54, bold=True, color=D_RED, align=PP_ALIGN.CENTER)
+    add_rect(sl, Inches(9.3), Inches(3.5), Inches(3.2), Inches(0.03), D_TEAL)
+    add_text_box(sl, "TOTAL IMPORTS",
+                 Inches(9.15), Inches(3.65), Inches(3.5), Inches(0.28),
+                 font_size=8.5, bold=True, color=D_MGREY, align=PP_ALIGN.CENTER)
+    add_text_box(sl, "K110.04bn",
+                 Inches(9.0), Inches(3.9), Inches(3.8), Inches(0.62),
+                 font_size=30, bold=True, color=D_ORANGE, align=PP_ALIGN.CENTER)
+    add_text_box(sl, "TOTAL EXPORTS",
+                 Inches(9.15), Inches(4.65), Inches(3.5), Inches(0.28),
+                 font_size=8.5, bold=True, color=D_MGREY, align=PP_ALIGN.CENTER)
+    add_text_box(sl, "K76.65bn",
+                 Inches(9.0), Inches(4.9), Inches(3.8), Inches(0.62),
+                 font_size=30, bold=True, color=D_TEAL, align=PP_ALIGN.CENTER)
+    add_text_box(sl, "A Storytelling with Data Analysis",
+                 Inches(0.5), Inches(6.88), Inches(8.0), Inches(0.38),
+                 font_size=9, italic=True, color=D_MGREY)
+    return sl
+
+
+# ═══════════════════════════════════════════
+# SLIDE 2 — CURRENCY CONTEXT (LIGHT)
+# ═══════════════════════════════════════════
+def build_slide_02(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "The Kwacha lost 3× its value — this distorts every ZMW trade figure")
+
+    # Subtitle in orange italic — matches screenshot
+    add_text_box(sl, "ZMW per 1 USD (annual average) — higher = weaker Kwacha",
+                 Inches(0.38), Inches(1.08), Inches(8.5), Inches(0.3),
+                 font_size=12, italic=True, color=L_ORANGE)
+
+    # ── Line chart: FX rate ──
+    chart_l = Inches(0.38)
+    chart_t = Inches(1.5)
+    chart_w = Inches(8.5)
+    chart_h = Inches(5.3)
+
+    draw_line_chart(sl,
+        [("", FX, L_ORANGE, 2.8)],
+        chart_l, chart_t, chart_w, chart_h,
+        max_val=25, min_val=0,
+        gridline_vals=[5, 10, 15, 20, 25],
+        show_points=True)
+
+    # Annotate key values on chart
+    fx_annotations = [
+        (0,  "5",  Inches(0.0)),
+        (2,  "6",  Inches(0.0)),
+        (4,  "10", Inches(0.0)),
+        (6,  "14", Inches(0.0)),
+        (7,  "18", Inches(0.0)),
+        (8,  "20", Inches(0.0)),
+        (9,  "17", Inches(0.0)),
+    ]
+    plot_l2 = chart_l + Inches(0.55)
+    plot_t2 = chart_t + Inches(0.18)
+    plot_w2 = chart_w - Inches(0.7)
+    plot_h2 = chart_h - Inches(0.55)
+    for (i, lbl, offset_x) in fx_annotations:
+        xp = plot_l2 + (i / 9) * plot_w2
+        yp = plot_t2 + plot_h2 * (1 - (FX[i] / 25))
+        add_text_box(sl, lbl,
+                     xp - Inches(0.15), yp - Inches(0.35),
+                     Inches(0.32), Inches(0.26),
+                     font_size=9.5, bold=True, color=L_ORANGE,
+                     align=PP_ALIGN.CENTER)
+
+    # ── Four annotation boxes (right side) — teal outlined, matches screenshot ──
+    box_l = Inches(9.18)
+    box_w = Inches(3.88)
+    box_h = Inches(1.18)
+    gap   = Inches(0.13)
+    annots = [
+        ("2013", "ZMW 5.40 / USD",  "Base year — ZMW relatively stable after post-2012 adjustments"),
+        ("2015", "ZMW 8.60 / USD",  "Sharp devaluation driven by copper price crash + drought"),
+        ("2020", "ZMW 18.30 / USD", "COVID shock + debt distress — Kwacha hits historic low"),
+        ("2022", "ZMW 17.20 / USD", "Partial recovery but still 3.2× weaker than 2013 base"),
+    ]
+    top_start = Inches(1.5)
+    for idx, (yr, rate, body) in enumerate(annots):
+        by = top_start + idx * (box_h + gap)
+        annotation_box(sl, box_l, by, box_w, box_h,
+                        yr, rate, body,
+                        border_color=L_TEAL, bg_color=L_TEAL_LT)
+
+    light_footer(sl)
+    slide_num(sl, 2)
+    return sl
+
+
+# ═══════════════════════════════════════════
+# SLIDE 3 — DIVERGING TRENDS (LIGHT)
+# ═══════════════════════════════════════════
+def build_slide_03(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "In Kwacha, trade looks like it boomed — imports grew 5×, exports grew 2×")
+
+    add_text_box(sl, "ZMW billions — nominal amounts in local currency",
+                 Inches(0.38), Inches(1.08), Inches(9.0), Inches(0.3),
+                 font_size=12, italic=True, color=L_ORANGE)
+
+    # ── Twin line chart: imports vs exports ──
+    chart_l = Inches(0.38)
+    chart_t = Inches(1.5)
+    chart_w = Inches(8.5)
+    chart_h = Inches(5.3)
+
+    draw_line_chart(sl,
+        [
+            ("Imports (ZMW)", IMPORTS, L_ORANGE, 2.8),
+            ("Exports (ZMW)", EXPORTS, L_TEAL,   2.4),
+        ],
+        chart_l, chart_t, chart_w, chart_h,
+        max_val=25, min_val=0,
+        gridline_vals=[5, 10, 15, 20],
+        show_points=True)
+
+    # ── Annotation boxes ──
+    box_l = Inches(9.18)
+    box_w = Inches(3.88)
+    box_h = Inches(1.18)
+    gap   = Inches(0.13)
+    annots = [
+        (L_ORANGE, L_ORANGE_LT,
+         "IMPORTS +428%",
+         "K4.2bn (2013) → K22.2bn (2022)\nNominal Kwacha surge driven mainly\nby currency depreciation"),
+        (L_TEAL, L_TEAL_LT,
+         "EXPORTS +138%",
+         "K5.4bn (2013) → K12.9bn (2022)\nZMW gains are partly translation\neffects, not real volume growth"),
+        (L_RED, RGBColor(0xff, 0xee, 0xee),
+         "DEFICIT WIDENED",
+         "+K1.23bn surplus (2013) flipped\nto -K9.27bn deficit (2022)\nCumulative gap: K33.4bn"),
+        (L_MGREY, L_PANEL,
+         "CAGR COMPARISON",
+         "Import CAGR: ~18% per year\nExport CAGR: ~10% per year\nGap compounds every year"),
+    ]
+    top_start = Inches(1.5)
+    for idx, (border, bg, title, body) in enumerate(annots):
+        by = top_start + idx * (box_h + gap)
+        add_rect_outline(sl, box_l, by, box_w, box_h, bg, border, Pt(1.5))
+        add_text_box(sl, title,
+                     box_l + Inches(0.12), by + Inches(0.1),
+                     box_w - Inches(0.18), Inches(0.32),
+                     font_size=12, bold=True, color=border)
+        add_text_box(sl, body,
+                     box_l + Inches(0.12), by + Inches(0.44),
+                     box_w - Inches(0.18), box_h - Inches(0.5),
+                     font_size=10, color=L_DGREY, word_wrap=True)
+
+    light_footer(sl, "Source: Zambia Agriculture Import-Export Dashboard 2013–2022")
+    slide_num(sl, 3)
+    return sl
+
+
+# ═══════════════════════════════════════════
+# SLIDE 4 — USD REAL TERMS (LIGHT)
+# ═══════════════════════════════════════════
 def build_slide_04(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), COLOR_GOLD)
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "Strip out the FX effect — in USD, exports are shrinking and imports are flat")
 
-    add_action_headline(slide,
-        "The Numbers Lie: Currency Depreciation is Inflating Both Sides")
+    add_text_box(sl, "USD billions — real purchasing power perspective",
+                 Inches(0.38), Inches(1.08), Inches(9.0), Inches(0.3),
+                 font_size=12, italic=True, color=L_ORANGE)
 
-    # Label
-    add_text_box(slide, "THE TWIST — CURRENCY LENS",
-                 Inches(0.3), Inches(1.45), Inches(6.0), Inches(0.28),
-                 font_size=8.5, bold=True, color=COLOR_GOLD)
+    # Convert ZMW to approximate USD using FX rates
+    usd_imports = [IMPORTS[i] / FX[i] for i in range(len(YEARS))]
+    usd_exports = [EXPORTS[i] / FX[i] for i in range(len(YEARS))]
 
-    # ZMW/USD timeline
-    add_rect(slide, Inches(0.3), Inches(1.82), Inches(5.9), Inches(3.5), BG_PANEL)
-    add_text_box(slide, "ZMW / USD EXCHANGE RATE TRAJECTORY",
-                 Inches(0.45), Inches(1.92), Inches(5.6), Inches(0.3),
-                 font_size=8.5, bold=True, color=COLOR_MGREY)
+    chart_l = Inches(0.38)
+    chart_t = Inches(1.5)
+    chart_w = Inches(8.5)
+    chart_h = Inches(5.3)
 
-    # Simple timeline bar showing depreciation
-    timeline_left = Inches(0.5)
-    timeline_top  = Inches(2.35)
-    timeline_w    = Inches(5.5)
-    timeline_h    = Inches(0.55)
+    draw_line_chart(sl,
+        [
+            ("Imports (USD)", usd_imports, L_ORANGE, 2.8),
+            ("Exports (USD)", usd_exports, L_TEAL,   2.4),
+        ],
+        chart_l, chart_t, chart_w, chart_h,
+        max_val=2.0, min_val=0,
+        gridline_vals=[0.5, 1.0, 1.5, 2.0],
+        show_points=True)
 
-    # Gradient simulation: narrow green → wide red
-    segments = [
-        (0.0,  0.08, COLOR_GREEN),
-        (0.08, 0.22, RGBColor(0x8b, 0xc3, 0x4a)),
-        (0.22, 0.42, COLOR_GOLD),
-        (0.42, 0.65, ACCENT_IMPORT),
-        (0.65, 1.0,  COLOR_DEFICIT),
+    # Annotation boxes
+    box_l = Inches(9.18)
+    box_w = Inches(3.88)
+    box_h = Inches(1.18)
+    gap   = Inches(0.13)
+
+    exp_pct = round((usd_exports[-1] / usd_exports[0] - 1) * 100)
+    imp_pct = round((usd_imports[-1] / usd_imports[0] - 1) * 100)
+
+    sign_e = "+" if exp_pct >= 0 else ""
+    sign_i = "+" if imp_pct >= 0 else ""
+
+    annots = [
+        (L_ORANGE, L_ORANGE_LT,
+         f"IMPORTS IN USD  {sign_i}{imp_pct}%",
+         f"${usd_imports[0]:.2f}bn (2013) → ${usd_imports[-1]:.2f}bn (2022)\nModest USD growth masked by\nKwacha collapse inflating ZMW figures"),
+        (L_TEAL, L_TEAL_LT,
+         f"EXPORTS IN USD  {sign_e}{exp_pct}%",
+         f"${usd_exports[0]:.2f}bn (2013) → ${usd_exports[-1]:.2f}bn (2022)\nReal export capacity barely\nchanged over the decade"),
+        (L_RED, RGBColor(0xff, 0xee, 0xee),
+         "THE ILLUSION",
+         "ZMW figures show +428% import\ngrowth. USD figures reveal the\ntrue, far smaller picture."),
+        (L_MGREY, L_PANEL,
+         "KEY TAKEAWAY",
+         "Currency depreciation inflates\nboth sides of the ledger.\nNominal ≠ Real growth."),
     ]
-    for s_start, s_end, col in segments:
-        add_rect(slide,
-                 timeline_left + s_start * timeline_w,
-                 timeline_top,
-                 (s_end - s_start) * timeline_w,
-                 timeline_h,
-                 col)
+    top_start = Inches(1.5)
+    for idx, (border, bg, title, body) in enumerate(annots):
+        by = top_start + idx * (box_h + gap)
+        add_rect_outline(sl, box_l, by, box_w, box_h, bg, border, Pt(1.5))
+        add_text_box(sl, title,
+                     box_l + Inches(0.12), by + Inches(0.1),
+                     box_w - Inches(0.18), Inches(0.32),
+                     font_size=12, bold=True, color=border)
+        add_text_box(sl, body,
+                     box_l + Inches(0.12), by + Inches(0.44),
+                     box_w - Inches(0.18), box_h - Inches(0.5),
+                     font_size=10, color=L_DGREY, word_wrap=True)
 
-    # Year markers
-    rate_data = [(2013, "~5"), (2015, "~8"), (2017, "~9.5"),
-                 (2019, "~12"), (2020, "~21"), (2022, "~17-21")]
-    for year, rate in rate_data:
-        frac = (year - 2013) / 9.0
-        xp = timeline_left + frac * timeline_w
-        add_rect(slide, xp, timeline_top + timeline_h,
-                 Inches(0.02), Inches(0.15), COLOR_MGREY)
-        add_text_box(slide, str(year),
-                     xp - Inches(0.2), timeline_top + timeline_h + Inches(0.16),
-                     Inches(0.42), Inches(0.22),
-                     font_size=7.5, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-        add_text_box(slide, rate,
-                     xp - Inches(0.2), timeline_top - Inches(0.28),
-                     Inches(0.42), Inches(0.22),
-                     font_size=8, bold=True, color=COLOR_WHITE, align=PP_ALIGN.CENTER)
-
-    add_text_box(slide, "ZMW per USD",
-                 Inches(0.5), timeline_top - Inches(0.45), Inches(1.2), Inches(0.22),
-                 font_size=7.5, bold=True, color=COLOR_MGREY)
-
-    # Key insight boxes
-    insights = [
-        ("IMPORT INFLATION", ACCENT_IMPORT,
-         "K4.2bn (2013) → K22.2bn (2022)\nSame USD volume, 4× the ZMW cost\ndue to ~75% Kwacha depreciation"),
-        ("EXPORT ILLUSION", ACCENT_EXPORT,
-         "Tobacco/maize volumes barely grew.\nZMW gains are translation effects,\nnot real volume expansion"),
-        ("THE REALITY", COLOR_DEFICIT,
-         "\"Nominal growth is NOT real growth\nwhen your currency has lost\n75% of its value\""),
-    ]
-    for idx, (title, color, body) in enumerate(insights):
-        bx = Inches(0.3) + idx * Inches(1.96)
-        by = Inches(3.48)
-        add_rect(slide, bx, by, Inches(1.86), Inches(1.72), BG_PANEL)
-        add_rect(slide, bx, by, Inches(1.86), Inches(0.28), color)
-        add_text_box(slide, title,
-                     bx + Inches(0.05), by + Inches(0.03),
-                     Inches(1.76), Inches(0.24),
-                     font_size=7.5, bold=True, color=COLOR_WHITE)
-        add_text_box(slide, body,
-                     bx + Inches(0.07), by + Inches(0.35),
-                     Inches(1.72), Inches(1.3),
-                     font_size=9, color=COLOR_LGREY)
-
-    # Right big callout
-    add_rect(slide, Inches(6.5), Inches(1.42), Inches(6.5), Inches(5.7), BG_PANEL)
-    add_text_box(slide, "IMPORT COST REALITY CHECK",
-                 Inches(6.7), Inches(1.55), Inches(6.0), Inches(0.3),
-                 font_size=9, bold=True, color=COLOR_MGREY)
-
-    add_text_box(slide, "K4.2bn",
-                 Inches(6.7), Inches(1.95), Inches(3.5), Inches(0.8),
-                 font_size=42, bold=True, color=COLOR_GREEN)
-    add_text_box(slide, "2013 imports at ~5 ZMW/USD",
-                 Inches(6.7), Inches(2.72), Inches(5.5), Inches(0.28),
-                 font_size=10, color=COLOR_MGREY)
-
-    add_text_box(slide, "≈ same USD volume",
-                 Inches(6.7), Inches(3.1), Inches(5.5), Inches(0.35),
-                 font_size=13, italic=True, color=COLOR_GOLD)
-
-    add_text_box(slide, "K22.2bn",
-                 Inches(6.7), Inches(3.52), Inches(3.5), Inches(0.8),
-                 font_size=42, bold=True, color=COLOR_DEFICIT)
-    add_text_box(slide, "2022 imports at ~17–21 ZMW/USD",
-                 Inches(6.7), Inches(4.28), Inches(5.5), Inches(0.28),
-                 font_size=10, color=COLOR_MGREY)
-
-    add_rect(slide, Inches(6.7), Inches(4.72), Inches(5.9), Inches(0.03), COLOR_MGREY)
-
-    add_text_box(slide, "428% more Kwacha\nfor the same goods",
-                 Inches(6.7), Inches(4.85), Inches(5.9), Inches(0.8),
-                 font_size=21, bold=True, color=ACCENT_IMPORT)
-
-    add_text_box(slide,
-                 "ZMW weakened from ~5/USD (2013)\nto ~17–21/USD (2020–22) — a 75%+ decline.",
-                 Inches(6.7), Inches(5.75), Inches(5.9), Inches(0.85),
-                 font_size=10.5, color=COLOR_LGREY)
-
-    add_footer(slide)
-    add_slide_number(slide, 4)
-    return slide
+    light_footer(sl, "Source: ZMW/USD — Bank of Zambia / IMF averages; Trade data — FSIO Cohort")
+    slide_num(sl, 4)
+    return sl
 
 
-# ─────────────────────────────────────────────
-# SLIDE 5: IMPORT DRIVERS
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════
+# SLIDE 5 — TRADE BALANCE (LIGHT)
+# ═══════════════════════════════════════════
 def build_slide_05(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), ACCENT_IMPORT)
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "The deficit is worsening in BOTH currencies — there is no hiding from it")
 
-    add_action_headline(slide,
-        "Urea Dependency: Zambia Pays More Each Year to Grow the Same Crops")
+    add_text_box(sl, "Annual trade balance — ZMW billions (bars) with USD overlay (line)",
+                 Inches(0.38), Inches(1.08), Inches(9.0), Inches(0.3),
+                 font_size=12, italic=True, color=L_ORANGE)
 
-    add_text_box(slide, "TOP IMPORTED PRODUCTS (Relative Volume)",
-                 Inches(0.3), Inches(1.42), Inches(6.5), Inches(0.28),
-                 font_size=8.5, bold=True, color=COLOR_MGREY)
+    # Bar chart: trade balance by year
+    chart_l = Inches(0.38)
+    chart_t = Inches(1.5)
+    chart_w = Inches(8.5)
+    chart_h = Inches(5.3)
 
-    # Horizontal bar chart for imports
-    import_products = [
-        ("Urea (Fertilizer)",      100, ACCENT_IMPORT),
-        ("Mineral Products",        62, RGBColor(0xf0, 0x7a, 0x30)),
-        ("Frozen Goods",            41, RGBColor(0xd4, 0x6a, 0x25)),
-        ("Mineral Products-2",      36, RGBColor(0xb8, 0x58, 0x18)),
-        ("Ammonia",                 28, RGBColor(0xa0, 0x48, 0x10)),
-        ("Other Foods",             22, RGBColor(0x8a, 0x3a, 0x08)),
-        ("Crude Petroleum",         19, ACCENT_IMPORT),
-        ("Crude Soybean",           14, RGBColor(0xf0, 0x7a, 0x30)),
-        ("Palm Oil",                10, RGBColor(0xd4, 0x6a, 0x25)),
-        ("Ammonia-2",                8, RGBColor(0xb8, 0x58, 0x18)),
+    plot_l = chart_l + Inches(0.55)
+    plot_t = chart_t + Inches(0.18)
+    plot_w = chart_w - Inches(0.7)
+    plot_h = chart_h - Inches(0.55)
+
+    max_v = 3.0
+    min_v = -10.0
+    val_range = max_v - min_v
+    n = len(YEARS)
+
+    # Gridlines
+    for gv in [-8, -6, -4, -2, 0, 2]:
+        gy = plot_t + plot_h * (1 - (gv - min_v) / val_range)
+        add_rect(sl, plot_l, gy, plot_w, Inches(0.008),
+                 RGBColor(0xe8, 0xe8, 0xee))
+        add_text_box(sl, str(gv),
+                     chart_l, gy - Inches(0.13), Inches(0.52), Inches(0.28),
+                     font_size=8, color=L_MGREY, align=PP_ALIGN.RIGHT)
+
+    # Zero line
+    zero_y = plot_t + plot_h * (1 - (0 - min_v) / val_range)
+    add_rect(sl, plot_l, zero_y, plot_w, Inches(0.025), L_DGREY)
+    add_text_box(sl, "0",
+                 chart_l, zero_y - Inches(0.15), Inches(0.52), Inches(0.28),
+                 font_size=9, bold=True, color=L_DGREY, align=PP_ALIGN.RIGHT)
+
+    slot_w = plot_w / n
+    bar_w  = slot_w * 0.6
+
+    for i, yr in enumerate(YEARS):
+        b = BALANCE[i]
+        x_center = plot_l + (i + 0.5) * slot_w
+        bh = abs(b) / val_range * plot_h
+        if b >= 0:
+            by = zero_y - bh
+            col = L_TEAL
+        else:
+            by = zero_y
+            col = L_ORANGE
+        add_rect(sl, x_center - bar_w / 2, by, bar_w, bh, col)
+        # Value label
+        lbl = f"{b:+.1f}"
+        ly = by - Inches(0.25) if b >= 0 else by + bh + Inches(0.03)
+        add_text_box(sl, lbl,
+                     x_center - Inches(0.3), ly, Inches(0.6), Inches(0.22),
+                     font_size=7.5, bold=True,
+                     color=L_TEAL if b >= 0 else L_ORANGE,
+                     align=PP_ALIGN.CENTER)
+        add_text_box(sl, str(yr),
+                     x_center - Inches(0.28),
+                     plot_t + plot_h + Inches(0.05),
+                     Inches(0.56), Inches(0.22),
+                     font_size=8, color=L_MGREY, align=PP_ALIGN.CENTER)
+
+    # Annotation boxes right
+    box_l = Inches(9.18)
+    box_w = Inches(3.88)
+    box_h = Inches(1.18)
+    gap   = Inches(0.13)
+    annots = [
+        (L_TEAL, L_TEAL_LT,
+         "2013–2014: SURPLUS",
+         "Exports exceeded imports.\nZMW stable. Trade provided\na modest USD buffer."),
+        (L_ORANGE, L_ORANGE_LT,
+         "2015–2017: SHIFT",
+         "Deficit emerges and deepens.\nCopper crash + ZMW fall raise\nimport costs sharply."),
+        (L_RED, RGBColor(0xff, 0xee, 0xee),
+         "2020–2022: ACCELERATION",
+         "COVID + debt distress.\nDeficit reached -K9.3bn (2022)\nWorst in the decade."),
+        (L_MGREY, L_PANEL,
+         "USD TELLS SAME STORY",
+         "Even in USD terms the deficit\nworsened — not just a currency\nillusion, a structural problem."),
     ]
+    top_start = Inches(1.5)
+    for idx, (border, bg, title, body) in enumerate(annots):
+        by2 = top_start + idx * (box_h + gap)
+        add_rect_outline(sl, box_l, by2, box_w, box_h, bg, border, Pt(1.5))
+        add_text_box(sl, title,
+                     box_l + Inches(0.12), by2 + Inches(0.1),
+                     box_w - Inches(0.18), Inches(0.32),
+                     font_size=12, bold=True, color=border)
+        add_text_box(sl, body,
+                     box_l + Inches(0.12), by2 + Inches(0.44),
+                     box_w - Inches(0.18), box_h - Inches(0.5),
+                     font_size=10, color=L_DGREY, word_wrap=True)
 
-    bar_left  = Inches(0.3)
-    bar_start = Inches(2.2)
-    bar_top   = Inches(1.78)
-    row_h     = Inches(0.38)
-    max_bar_w = Inches(5.5)
-
-    for idx, (name, val, color) in enumerate(import_products):
-        by = bar_top + idx * row_h
-        bw = max_bar_w * (val / 100)
-        add_rect(slide, bar_start, by + Inches(0.04), bw, row_h - Inches(0.09), color)
-        add_text_box(slide, name,
-                     bar_left, by + Inches(0.07),
-                     Inches(1.85), row_h - Inches(0.08),
-                     font_size=8.5, color=COLOR_LGREY, align=PP_ALIGN.RIGHT)
-        add_text_box(slide, f"{val}",
-                     bar_start + bw + Inches(0.07), by + Inches(0.05),
-                     Inches(0.5), row_h - Inches(0.08),
-                     font_size=8, color=COLOR_MGREY)
-
-    # Urea label
-    add_text_box(slide, "#1",
-                 bar_start + Inches(0.05), bar_top + Inches(0.08),
-                 Inches(0.35), Inches(0.24),
-                 font_size=9, bold=True, color=COLOR_WHITE)
-
-    # Right panel: Vicious cycle
-    add_rect(slide, Inches(7.1), Inches(1.42), Inches(5.9), Inches(5.65), BG_PANEL)
-    add_text_box(slide, "THE FERTILIZER TRAP",
-                 Inches(7.3), Inches(1.55), Inches(5.5), Inches(0.3),
-                 font_size=10, bold=True, color=ACCENT_IMPORT)
-
-    cycle_steps = [
-        (Inches(7.3),  Inches(2.0),  "ZMW falls vs USD", ACCENT_IMPORT),
-        (Inches(9.15), Inches(2.65), "Urea costs MORE in ZMW", COLOR_DEFICIT),
-        (Inches(7.3),  Inches(3.3),  "Farmers cut usage", COLOR_GOLD),
-        (Inches(9.15), Inches(3.95), "Lower crop yields", ACCENT_IMPORT),
-        (Inches(7.3),  Inches(4.6),  "Less export revenue", COLOR_DEFICIT),
-        (Inches(9.15), Inches(5.25), "More ZMW pressure", COLOR_DEFICIT),
-    ]
-    arrows = ["↓", "↓", "↓", "↓", "↓"]
-
-    for i, (x, y, text, color) in enumerate(cycle_steps):
-        add_rect(slide, x, y, Inches(1.7), Inches(0.5), color)
-        add_text_box(slide, text,
-                     x + Inches(0.05), y + Inches(0.07),
-                     Inches(1.6), Inches(0.38),
-                     font_size=8.5, bold=True, color=COLOR_WHITE, align=PP_ALIGN.CENTER)
-        if i < len(cycle_steps) - 1:
-            ax = x + Inches(0.85) - Inches(0.08)
-            ay = y + Inches(0.5)
-            add_text_box(slide, "↓",
-                         ax, ay,
-                         Inches(0.18), Inches(0.32),
-                         font_size=12, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-
-    # Cycle back arrow annotation
-    add_text_box(slide, "⟳  Self-reinforcing loop",
-                 Inches(7.3), Inches(5.85), Inches(5.5), Inches(0.3),
-                 font_size=10, bold=True, color=COLOR_DEFICIT)
-
-    # Key insight
-    add_text_box(slide,
-                 "\"The import basket is dominated by inputs\nZambia cannot produce domestically.\"",
-                 Inches(0.3), Inches(5.82), Inches(6.5), Inches(0.75),
-                 font_size=12, italic=True, color=COLOR_GOLD)
-
-    add_footer(slide)
-    add_slide_number(slide, 5)
-    return slide
+    light_footer(sl, "Source: Zambia Agriculture Import-Export Dashboard 2013–2022  |  FSIO Cohort")
+    slide_num(sl, 5)
+    return sl
 
 
-# ─────────────────────────────────────────────
-# SLIDE 6: EXPORT DRIVERS
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════
+# SLIDE 6 — KEY CONCLUSIONS (LIGHT)
+# ═══════════════════════════════════════════
 def build_slide_06(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), ACCENT_EXPORT)
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "Key Conclusions from the 2013-2022 Agriculture Trade Data")
 
-    add_action_headline(slide,
-        "Raw Commodity Exports: High Volume, Low Value-Add, Capped Upside")
-
-    add_text_box(slide, "TOP EXPORTED PRODUCTS (Relative Volume)",
-                 Inches(0.3), Inches(1.42), Inches(6.5), Inches(0.28),
-                 font_size=8.5, bold=True, color=COLOR_MGREY)
-
-    export_products = [
-        ("Tobacco",       100, ACCENT_EXPORT),
-        ("Other Raw",      58, RGBColor(0x2a, 0x85, 0xb8)),
-        ("Oil Cake",       42, RGBColor(0x1d, 0x6f, 0xa4)),
-        ("Maize",          38, RGBColor(0x16, 0x5e, 0x90)),
-        ("Cotton",         30, RGBColor(0x10, 0x4e, 0x7c)),
-        ("Tobacco-2",      22, ACCENT_EXPORT),
-        ("Sweet B.",       15, RGBColor(0x2a, 0x85, 0xb8)),
-        ("Maize Seeds",    11, RGBColor(0x1d, 0x6f, 0xa4)),
-        ("Raw Ca.",         8, RGBColor(0x16, 0x5e, 0x90)),
-        ("Cane Or.",        5, RGBColor(0x10, 0x4e, 0x7c)),
-    ]
-
-    bar_left  = Inches(0.3)
-    bar_start = Inches(2.2)
-    bar_top   = Inches(1.78)
-    row_h     = Inches(0.38)
-    max_bar_w = Inches(5.5)
-
-    for idx, (name, val, color) in enumerate(export_products):
-        by = bar_top + idx * row_h
-        bw = max_bar_w * (val / 100)
-        add_rect(slide, bar_start, by + Inches(0.04), bw, row_h - Inches(0.09), color)
-        add_text_box(slide, name,
-                     bar_left, by + Inches(0.07),
-                     Inches(1.85), row_h - Inches(0.08),
-                     font_size=8.5, color=COLOR_LGREY, align=PP_ALIGN.RIGHT)
-        add_text_box(slide, f"{val}",
-                     bar_start + bw + Inches(0.07), by + Inches(0.05),
-                     Inches(0.5), row_h - Inches(0.08),
-                     font_size=8, color=COLOR_MGREY)
-
-    # Right panel
-    add_rect(slide, Inches(7.1), Inches(1.42), Inches(5.9), Inches(5.65), BG_PANEL)
-    add_text_box(slide, "WHY EXPORTS HAVE A CEILING",
-                 Inches(7.3), Inches(1.55), Inches(5.5), Inches(0.3),
-                 font_size=10, bold=True, color=ACCENT_EXPORT)
-
-    right_points = [
-        (ACCENT_EXPORT,  "PRICE TAKER",
-         "Tobacco, maize, cotton are globally\npriced commodities. Zambia has no\nleverage on the USD price."),
-        (COLOR_GOLD,     "2021 PEAK → 2022 DIP",
-         "Exports hit K14.2bn (2021) but\nFELL to K12.9bn (2022) — first sign\nthat currency tailwind can reverse."),
-        (COLOR_DEFICIT,  "STRUCTURAL CAP",
-         "Without processing raw commodities\nlocally, export revenue upside is\nlimited regardless of volume."),
-    ]
-
-    for idx, (color, title, body) in enumerate(right_points):
-        by = Inches(2.0) + idx * Inches(1.72)
-        add_rect(slide, Inches(7.3), by, Inches(0.06), Inches(1.38), color)
-        add_text_box(slide, title,
-                     Inches(7.45), by + Inches(0.03),
-                     Inches(5.3), Inches(0.3),
-                     font_size=9.5, bold=True, color=color)
-        add_text_box(slide, body,
-                     Inches(7.45), by + Inches(0.36),
-                     Inches(5.3), Inches(1.0),
-                     font_size=9.5, color=COLOR_LGREY)
-
-    # Quote
-    add_text_box(slide,
-                 "\"When commodity prices fall, export revenue falls —\nno matter what the Kwacha does.\"",
-                 Inches(0.3), Inches(5.82), Inches(6.5), Inches(0.75),
-                 font_size=12, italic=True, color=COLOR_GOLD)
-
-    # Export trend callout
-    add_text_box(slide, "2021: K14.17bn  →  2022: K12.95bn  (-K1.22bn)",
-                 Inches(7.3), Inches(6.92), Inches(5.5), Inches(0.28),
-                 font_size=9, bold=True, color=COLOR_DEFICIT)
-
-    add_footer(slide)
-    add_slide_number(slide, 6)
-    return slide
-
-
-# ─────────────────────────────────────────────
-# SLIDE 7: THE COMPOUNDING RISK
-# ─────────────────────────────────────────────
-def build_slide_07(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), COLOR_DEFICIT)
-
-    add_action_headline(slide,
-        "The Deficit Loop: How Trade Imbalance Deepens Currency Weakness")
-
-    # Cycle diagram — horizontal flow
-    add_text_box(slide, "THE SELF-REINFORCING CYCLE",
-                 Inches(0.3), Inches(1.45), Inches(12.5), Inches(0.3),
-                 font_size=8.5, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-
-    cycle_nodes = [
-        (Inches(0.5),  Inches(2.2), "Trade\nDeficit\nGrows",    COLOR_DEFICIT),
-        (Inches(3.0),  Inches(2.2), "Less USD\nInflow to\nZambia",  ACCENT_IMPORT),
-        (Inches(5.5),  Inches(2.2), "ZMW\nDepreciates\nFurther",    COLOR_GOLD),
-        (Inches(8.0),  Inches(2.2), "Imports Cost\nMore in\nZMW",   ACCENT_IMPORT),
-        (Inches(10.5), Inches(2.2), "Deficit\nWidens\nAgain",       COLOR_DEFICIT),
-    ]
-
-    node_w = Inches(2.2)
-    node_h = Inches(1.35)
-
-    for i, (x, y, text, color) in enumerate(cycle_nodes):
-        add_rect(slide, x, y, node_w, node_h, color)
-        add_text_box(slide, text,
-                     x + Inches(0.05), y + Inches(0.15),
-                     node_w - Inches(0.1), node_h - Inches(0.2),
-                     font_size=13, bold=True, color=COLOR_WHITE, align=PP_ALIGN.CENTER)
-        if i < len(cycle_nodes) - 1:
-            add_text_box(slide, "→",
-                         x + node_w + Inches(0.05), y + Inches(0.45),
-                         Inches(0.3), Inches(0.5),
-                         font_size=22, bold=True, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-
-    # Loop back arrow label
-    add_text_box(slide,
-                 "⟲  This loop repeated every year from 2015 to 2022",
-                 Inches(0.5), Inches(3.72), Inches(12.2), Inches(0.32),
-                 font_size=11, italic=True, color=COLOR_DEFICIT, align=PP_ALIGN.CENTER)
-
-    # Evidence boxes
-    add_rect(slide, Inches(0.3), Inches(4.15), Inches(12.5), Inches(0.03), BG_PANEL)
-
-    evidence = [
-        ("2013", "SURPLUS\n+K1.2bn", COLOR_GREEN,
-         "Exports > Imports.\nSurplus provides USD buffer.\nZMW relatively stable."),
-        ("2017", "DEFICIT\n-K4.1bn", ACCENT_IMPORT,
-         "First sustained deficit year.\nUrea imports surge.\nZMW starts weakening."),
-        ("2020", "DEFICIT\n-K5.8bn", COLOR_DEFICIT,
-         "COVID shock. ZMW hits\n~21/USD. Import costs\nexplode in ZMW terms."),
-        ("2022", "DEFICIT\n-K9.3bn", COLOR_DEFICIT,
-         "Exports FELL despite\nrising ZMW weakness.\nLoop is accelerating."),
-    ]
-
-    for idx, (year, status, color, desc) in enumerate(evidence):
-        ex = Inches(0.3) + idx * Inches(3.15)
-        ey = Inches(4.3)
-        add_rect(slide, ex, ey, Inches(2.95), Inches(2.78), BG_PANEL)
-        add_rect(slide, ex, ey, Inches(2.95), Inches(0.28), color)
-        add_text_box(slide, year,
-                     ex + Inches(0.06), ey + Inches(0.03),
-                     Inches(1.0), Inches(0.24),
-                     font_size=9, bold=True, color=COLOR_WHITE)
-        add_text_box(slide, status,
-                     ex + Inches(0.06), ey + Inches(0.35),
-                     Inches(2.8), Inches(0.65),
-                     font_size=18, bold=True, color=color)
-        add_text_box(slide, desc,
-                     ex + Inches(0.06), ey + Inches(1.1),
-                     Inches(2.8), Inches(1.5),
-                     font_size=9.5, color=COLOR_LGREY)
-
-    add_text_box(slide,
-                 "\"Without intervention, this is a self-reinforcing cycle.\"",
-                 Inches(0.3), Inches(7.12), Inches(12.5), Inches(0.28),
-                 font_size=10, italic=True, bold=True, color=COLOR_GOLD,
-                 align=PP_ALIGN.CENTER)
-
-    add_footer(slide)
-    add_slide_number(slide, 7)
-    return slide
-
-
-# ─────────────────────────────────────────────
-# SLIDE 8: CALL TO ACTION
-# ─────────────────────────────────────────────
-def build_slide_08(prs):
-    slide_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(slide_layout)
-    set_slide_background(slide, BG_DARK)
-    add_rect(slide, Inches(0), Inches(0), Inches(0.08), Inches(7.5), COLOR_GREEN)
-
-    add_action_headline(slide, "Three Priorities to Break the Deficit Loop")
-
-    # Big idea restate
-    add_rect(slide, Inches(0.3), Inches(1.42), Inches(12.7), Inches(0.62), BG_PANEL)
-    add_text_box(slide,
-                 "The K33bn deficit is a structural warning. Currency management alone cannot fix what requires industrial diversification.",
-                 Inches(0.45), Inches(1.48), Inches(12.2), Inches(0.52),
-                 font_size=12.5, italic=True, bold=True, color=COLOR_GOLD,
-                 align=PP_ALIGN.CENTER)
-
-    # Three priority cards
-    priorities = [
-        (
-            "01",
-            "Reduce Urea\nDependency",
-            ACCENT_IMPORT,
-            [
-                "Invest in domestic fertilizer production",
-                "Explore regional procurement in ZMW or barter",
-                "Subsidize alternative/organic inputs",
-                "Reduce exposure to USD-priced inputs",
-            ]
-        ),
-        (
-            "02",
-            "Value-Add\nExports",
-            ACCENT_EXPORT,
-            [
-                "Process tobacco & cotton locally before export",
-                "Mill maize into flour for regional markets",
-                "Capture more USD per unit exported",
-                "Move from price-taker to price-setter",
-            ]
-        ),
-        (
-            "03",
-            "Import\nSubstitution",
-            COLOR_GREEN,
-            [
-                "Develop local capacity for top import categories",
-                "Reduce USD outflow on petroleum & minerals",
-                "Industrial policy targeting import-heavy sectors",
-                "Regional trade agreements in local currencies",
-            ]
-        ),
+    # Six conclusion cards in 2×3 grid
+    conclusions = [
+        (L_ORANGE, "01  CURRENCY AMPLIFICATION",
+         "ZMW depreciated 3×. This amplified all ZMW "
+         "trade figures — imports look 428% higher, exports 138% higher. "
+         "The real USD change is far smaller."),
+        (L_TEAL, "02  STRUCTURAL TRADE DEFICIT",
+         "Zambia moved from surplus (2013) to a K9.3bn annual deficit (2022). "
+         "K33.4bn cumulative. This is structural, not cyclical — "
+         "driven by import dependency."),
+        (L_RED, "03  FERTILIZER TRAP",
+         "Urea is the #1 import. Currency weakness makes fertilizer "
+         "more expensive in ZMW every year, threatening the yields "
+         "of the very crops Zambia exports."),
+        (L_ORANGE, "04  RAW EXPORT CEILING",
+         "All top exports (tobacco, maize, cotton) are unprocessed. "
+         "Zambia is a global price-taker. Without value-addition "
+         "there is a hard ceiling on export revenue growth."),
+        (L_TEAL, "05  2022 WARNING SIGNAL",
+         "Exports fell -K1.22bn in 2022 despite continuing ZMW weakness "
+         "— the first contraction. This suggests real volume or "
+         "commodity price deterioration beyond currency effects."),
+        (L_RED, "06  SELF-REINFORCING LOOP",
+         "Deficit → less USD inflow → ZMW weakens → imports cost more "
+         "in ZMW → deficit widens. Without structural intervention "
+         "this loop will deepen the K33bn gap further."),
     ]
 
     card_w = Inches(4.1)
-    card_h = Inches(4.38)
-    card_top = Inches(2.18)
+    card_h = Inches(2.52)
+    cols   = 3
+    rows   = 2
+    col_gap = Inches(0.12)
+    row_gap = Inches(0.12)
+    start_l = Inches(0.38)
+    start_t = Inches(1.18)
+
+    for idx, (color, title, body) in enumerate(conclusions):
+        col_i = idx % cols
+        row_i = idx // cols
+        cx = start_l + col_i * (card_w + col_gap)
+        cy = start_t + row_i * (card_h + row_gap)
+        add_rect_outline(sl, cx, cy, card_w, card_h, L_PANEL, color, Pt(1.5))
+        add_rect(sl, cx, cy, card_w, Inches(0.06), color)
+        add_text_box(sl, title,
+                     cx + Inches(0.14), cy + Inches(0.14),
+                     card_w - Inches(0.22), Inches(0.38),
+                     font_size=11, bold=True, color=color)
+        add_text_box(sl, body,
+                     cx + Inches(0.14), cy + Inches(0.55),
+                     card_w - Inches(0.22), card_h - Inches(0.65),
+                     font_size=10, color=L_DGREY, word_wrap=True)
+
+    light_footer(sl, "Source: Zambia Agriculture Import-Export Dashboard 2013–2022  |  FSIO Cohort Analysis")
+    slide_num(sl, 6)
+    return sl
+
+
+# ═══════════════════════════════════════════
+# SLIDE 7 — IMPORT DRIVERS (LIGHT)
+# ═══════════════════════════════════════════
+def build_slide_07(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, L_BG)
+    light_headline(sl, "Urea Dependency: Zambia Pays More Each Year to Grow the Same Crops")
+
+    add_text_box(sl, "Top imported products (relative volume index) and the fertilizer vicious cycle",
+                 Inches(0.38), Inches(1.08), Inches(9.0), Inches(0.3),
+                 font_size=12, italic=True, color=L_ORANGE)
+
+    # Horizontal bar chart
+    import_products = [
+        ("Urea (Fertilizer)",  100),
+        ("Mineral Products",    62),
+        ("Frozen Goods",        41),
+        ("Mineral Products-2",  36),
+        ("Ammonia",             28),
+        ("Other Foods",         22),
+        ("Crude Petroleum",     19),
+        ("Crude Soybean",       14),
+        ("Palm Oil",            10),
+        ("Ammonia-2",            8),
+    ]
+
+    bar_label_w = Inches(1.9)
+    bar_start   = Inches(0.38) + bar_label_w + Inches(0.08)
+    bar_top     = Inches(1.48)
+    row_h       = Inches(0.44)
+    max_bar_w   = Inches(5.5)
+
+    for idx, (name, val) in enumerate(import_products):
+        by = bar_top + idx * row_h
+        # Shade by rank
+        alpha = 0.55 + 0.45 * (val / 100)
+        r_base, g_base, b_base = 0xe8, 0x5d, 0x04  # L_ORANGE components
+        r   = int(r_base * alpha + 255 * (1 - alpha))
+        g_c = int(g_base * alpha + 255 * (1 - alpha))
+        b_c = int(b_base * alpha + 255 * (1 - alpha))
+        col = RGBColor(min(r, 255), min(g_c, 255), min(b_c, 255))
+        bw = max_bar_w * (val / 100)
+        add_rect(sl, bar_start, by + Inches(0.05), bw, row_h - Inches(0.1), col)
+        add_text_box(sl, name,
+                     Inches(0.38), by + Inches(0.1),
+                     bar_label_w, row_h - Inches(0.1),
+                     font_size=8.5, color=L_DGREY, align=PP_ALIGN.RIGHT)
+        add_text_box(sl, str(val),
+                     bar_start + bw + Inches(0.06), by + Inches(0.08),
+                     Inches(0.45), row_h - Inches(0.1),
+                     font_size=8, color=L_MGREY)
+
+    # #1 badge
+    add_rect_outline(sl, bar_start, bar_top + Inches(0.05),
+                     Inches(0.28), Inches(0.3),
+                     L_ORANGE, L_ORANGE, Pt(0))
+    add_text_box(sl, "#1",
+                 bar_start + Inches(0.02), bar_top + Inches(0.06),
+                 Inches(0.24), Inches(0.25),
+                 font_size=8, bold=True, color=L_BG, align=PP_ALIGN.CENTER)
+
+    # Right panel — vicious cycle
+    rx = Inches(8.22)
+    add_rect(sl, rx, Inches(1.18), Inches(4.78), Inches(5.88), L_PANEL)
+    add_text_box(sl, "THE FERTILIZER TRAP",
+                 rx + Inches(0.18), Inches(1.3), Inches(4.4), Inches(0.32),
+                 font_size=11, bold=True, color=L_ORANGE)
+
+    steps = [
+        (L_ORANGE, "ZMW falls vs USD"),
+        (L_RED,    "Urea costs MORE in ZMW"),
+        (L_ORANGE, "Farmers cut usage"),
+        (L_RED,    "Lower crop yields"),
+        (L_ORANGE, "Less export revenue"),
+        (L_RED,    "More ZMW pressure →"),
+    ]
+    sy = Inches(1.72)
+    for si, (col, txt) in enumerate(steps):
+        add_rect_outline(sl, rx + Inches(0.18), sy,
+                         Inches(4.42), Inches(0.52),
+                         RGBColor(0xff, 0xf3, 0xe8) if col == L_ORANGE else RGBColor(0xff, 0xee, 0xee),
+                         col, Pt(1.2))
+        add_text_box(sl, txt,
+                     rx + Inches(0.3), sy + Inches(0.1),
+                     Inches(4.2), Inches(0.34),
+                     font_size=10, bold=True, color=col)
+        if si < len(steps) - 1:
+            add_text_box(sl, "↓",
+                         rx + Inches(2.0), sy + Inches(0.52),
+                         Inches(0.4), Inches(0.22),
+                         font_size=11, color=L_MGREY, align=PP_ALIGN.CENTER)
+        sy += Inches(0.76)
+
+    add_text_box(sl,
+                 "⟳  Self-reinforcing loop — breaks only with domestic fertilizer production",
+                 rx + Inches(0.12), Inches(6.56), Inches(4.55), Inches(0.46),
+                 font_size=9, italic=True, color=L_RED)
+
+    light_footer(sl, "Source: Zambia Agriculture Import-Export Dashboard 2013–2022  |  FSIO Cohort")
+    slide_num(sl, 7)
+    return sl
+
+
+# ═══════════════════════════════════════════
+# SLIDE 8 — CALL TO ACTION (DARK)
+# ═══════════════════════════════════════════
+def build_slide_08(prs):
+    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(sl, D_BG)
+    add_rect(sl, Inches(0), Inches(0), Inches(0.08), Inches(7.5), D_GREEN)
+
+    # Headline bar
+    add_rect(sl, Inches(0), Inches(0.22), Inches(13.33), Inches(1.0), D_PANEL)
+    add_text_box(sl, "Three Priorities to Break the Deficit Loop",
+                 Inches(0.38), Inches(0.3), Inches(12.5), Inches(0.85),
+                 font_size=26, bold=True, color=D_WHITE)
+
+    # Big idea restate
+    add_rect(sl, Inches(0.3), Inches(1.38), Inches(12.7), Inches(0.62), D_PANEL)
+    add_text_box(sl,
+                 "The K33bn deficit is a structural warning. "
+                 "Currency management alone cannot fix what requires industrial diversification.",
+                 Inches(0.45), Inches(1.44), Inches(12.2), Inches(0.52),
+                 font_size=12.5, italic=True, bold=True,
+                 color=D_GOLD, align=PP_ALIGN.CENTER)
+
+    # Three priority cards
+    priorities = [
+        ("01", "Reduce Urea\nDependency", D_ORANGE,
+         ["Invest in domestic fertilizer production",
+          "Regional procurement in ZMW or barter",
+          "Subsidize alternative/organic inputs",
+          "Reduce exposure to USD-priced inputs"]),
+        ("02", "Value-Add\nExports", D_TEAL,
+         ["Process tobacco & cotton locally before export",
+          "Mill maize into flour for regional markets",
+          "Capture more USD per unit exported",
+          "Move from price-taker to price-setter"]),
+        ("03", "Import\nSubstitution", D_GREEN,
+         ["Develop local capacity for top import lines",
+          "Reduce USD outflow on petroleum & minerals",
+          "Industrial policy targeting import-heavy sectors",
+          "Regional trade agreements in local currencies"]),
+    ]
+
+    card_w = Inches(4.1)
+    card_h = Inches(4.42)
+    card_top = Inches(2.15)
 
     for idx, (num, title, color, points) in enumerate(priorities):
         cx = Inches(0.3) + idx * (card_w + Inches(0.15))
-        add_rect(slide, cx, card_top, card_w, card_h, BG_PANEL)
-        add_rect(slide, cx, card_top, card_w, Inches(0.1), color)
-
-        # Number badge
-        add_rect(slide, cx + Inches(0.15), card_top + Inches(0.18),
+        add_rect(sl, cx, card_top, card_w, card_h, D_PANEL)
+        add_rect(sl, cx, card_top, card_w, Inches(0.1), color)
+        add_rect(sl, cx + Inches(0.15), card_top + Inches(0.18),
                  Inches(0.45), Inches(0.45), color)
-        add_text_box(slide, num,
+        add_text_box(sl, num,
                      cx + Inches(0.15), card_top + Inches(0.18),
                      Inches(0.45), Inches(0.45),
-                     font_size=12, bold=True, color=COLOR_WHITE,
-                     align=PP_ALIGN.CENTER)
-
-        add_text_box(slide, title,
-                     cx + Inches(0.72), card_top + Inches(0.2),
+                     font_size=12, bold=True, color=D_WHITE, align=PP_ALIGN.CENTER)
+        add_text_box(sl, title,
+                     cx + Inches(0.72), card_top + Inches(0.18),
                      Inches(3.2), Inches(0.72),
                      font_size=16, bold=True, color=color)
-
-        add_rect(slide, cx + Inches(0.15), card_top + Inches(0.95),
+        add_rect(sl, cx + Inches(0.15), card_top + Inches(0.95),
                  card_w - Inches(0.3), Inches(0.02), color)
-
         for pi, point in enumerate(points):
             py = card_top + Inches(1.08) + pi * Inches(0.72)
-            add_rect(slide, cx + Inches(0.18), py + Inches(0.12),
+            add_rect(sl, cx + Inches(0.18), py + Inches(0.12),
                      Inches(0.12), Inches(0.12), color)
-            add_text_box(slide, point,
+            add_text_box(sl, point,
                          cx + Inches(0.38), py + Inches(0.02),
                          card_w - Inches(0.55), Inches(0.65),
-                         font_size=9.5, color=COLOR_LGREY)
+                         font_size=9.5, color=D_LGREY)
 
-    # Bottom bar
-    add_rect(slide, Inches(0), Inches(6.78), Inches(13.33), Inches(0.72), BG_PANEL)
-    add_text_box(slide,
-                 "Data: Zambia Agriculture Import-Export Dashboard 2013–2022  |  FSIO Cohort Analysis  |  May 2026",
+    add_rect(sl, Inches(0), Inches(6.78), Inches(13.33), Inches(0.72), D_PANEL)
+    add_text_box(sl,
+                 "Data: Zambia Agriculture Import-Export Dashboard 2013–2022  "
+                 "|  FSIO Cohort Analysis  |  May 2026",
                  Inches(0.3), Inches(6.87), Inches(12.7), Inches(0.3),
-                 font_size=8.5, color=COLOR_MGREY, align=PP_ALIGN.CENTER)
-
-    add_slide_number(slide, 8)
-    return slide
+                 font_size=8.5, color=D_MGREY, align=PP_ALIGN.CENTER)
+    return sl
 
 
-# ─────────────────────────────────────────────
-# MAIN: BUILD PRESENTATION
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════
 def main():
     prs = Presentation()
     prs.slide_width  = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    print("Building slide 1: Title Slide...")
+    print("Slide 1 — Title (dark) ...")
     build_slide_01(prs)
-
-    print("Building slide 2: The Situation...")
+    print("Slide 2 — Currency context (light) ...")
     build_slide_02(prs)
-
-    print("Building slide 3: Diverging Trends...")
+    print("Slide 3 — Diverging ZMW trends (light) ...")
     build_slide_03(prs)
-
-    print("Building slide 4: Currency Twist...")
+    print("Slide 4 — USD real terms (light) ...")
     build_slide_04(prs)
-
-    print("Building slide 5: Import Drivers...")
+    print("Slide 5 — Trade balance (light) ...")
     build_slide_05(prs)
-
-    print("Building slide 6: Export Drivers...")
+    print("Slide 6 — Key conclusions (light) ...")
     build_slide_06(prs)
-
-    print("Building slide 7: Compounding Risk...")
+    print("Slide 7 — Import drivers (light) ...")
     build_slide_07(prs)
-
-    print("Building slide 8: Call to Action...")
+    print("Slide 8 — Call to action (dark) ...")
     build_slide_08(prs)
 
-    output_path = "zambia_trade_presentation.pptx"
-    prs.save(output_path)
-    print(f"\nPresentation saved: {output_path}")
-    print(f"Total slides: {len(prs.slides)}")
-    print("Done! Open the .pptx in PowerPoint or LibreOffice Impress.")
+    out = "zambia_trade_presentation_Daniel.pptx"
+    prs.save(out)
+    print(f"\nDone! Saved: {out}  ({len(prs.slides)} slides)")
 
 
 if __name__ == "__main__":
